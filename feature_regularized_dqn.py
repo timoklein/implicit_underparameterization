@@ -26,14 +26,7 @@ from src.utils import make_env, set_cuda_configuration
 
 
 def update(
-    q_network: DDQN,
-    target_network: DDQN,
-    optimizer: optim.Adam,
-    data: ReplayBufferSamples,
-    gamma: float,
-    regularize: bool,
-    regularization_coefficient: float,
-    srank_threshold: float,
+    q_network: DDQN, target_network: DDQN, optimizer: optim.Adam, data: ReplayBufferSamples, cfg: Config
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Calculate DDQN and feature regularization losses and take a gradient step."""
 
@@ -44,17 +37,18 @@ def update(
         policy_actions = q_network(data.next_observations)[0].argmax(dim=1)
         target_max = target_vals[range(len(target_vals)), policy_actions]
         # Calculate Q-target
-        td_target = data.rewards.flatten() + gamma * target_max * (1 - data.dones.flatten())
+        td_target = data.rewards.flatten() + cfg.gamma * target_max * (1 - data.dones.flatten())
 
     qs, train_feats = q_network(data.observations)
     old_val = qs.gather(1, data.actions).squeeze()
 
     # Calculate loss
     dqn_loss = F.mse_loss(td_target, old_val)
-    if regularize:
+    if cfg.regularize:
         # Get the singular values of the feature matrix and calculate the regularization loss
-        _, s_min, s_max = effective_rank(train_feats, srank_threshold)
-        regularizer = regularization_coefficient * (s_max ** 2 - s_min ** 2)
+        _, s_min, s_max = effective_rank(train_feats, cfg.srank_threshold)
+        # Catch case where the rank of the feature matrix has collapsed
+        regularizer = cfg.regularization_coefficient * (s_max**2 - s_min**2)
         loss = dqn_loss + regularizer
     else:
         loss = dqn_loss
@@ -170,14 +164,7 @@ def main(cfg: Config) -> None:
                 # )[-1]
 
                 loss, dqn_loss, regularizer, old_val, grad_norm = update(
-                    q_network=agent,
-                    target_network=target_network,
-                    optimizer=optimizer,
-                    data=data,
-                    gamma=cfg.gamma,
-                    regularize=cfg.regularize,
-                    regularization_coefficient=cfg.regularization_coefficient,
-                    srank_threshold=cfg.srank_threshold,
+                    q_network=agent, target_network=target_network, optimizer=optimizer, data=data, cfg=cfg
                 )
 
                 if global_step % 100 == 0:
@@ -185,16 +172,18 @@ def main(cfg: Config) -> None:
                     with torch.inference_mode():
                         data = rb.sample(5000)
                         feats = agent.phi(data.observations)
-                        srank, _, _ = effective_rank(feats, cfg.srank_threshold)
+                        srank, s_min, s_max = effective_rank(feats, cfg.srank_threshold)
 
                     print("SPS:", int(global_step / (time.time() - start_time)))
                     wandb.log(
                         {
                             "losses/loss": loss.item(),
                             "losses/td_loss": dqn_loss.item(),
-                            "losses/regularization_loss": regularizer.item(),
                             "losses/q_values": old_val.mean().item(),
                             "losses/grad_norm": grad_norm.item(),
+                            "regularization/regularization_loss": regularizer.item(),
+                            "regularization/s_min": s_min.item(),
+                            "regularization/s_max": s_max.item(),
                             "charts/srank": srank.item() + 1,  # offset indices starting with 0
                             "charts/SPS": int(global_step / (time.time() - start_time)),
                         },

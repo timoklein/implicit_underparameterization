@@ -37,5 +37,5 @@ class Config:
 
     # IU-DQN settings
     regularize: bool = False
-    regularization_coefficient: float = 0.001
+    regularization_coefficient: float = 0.0005
     srank_threshold: float = 0.99

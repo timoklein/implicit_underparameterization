@@ -22,7 +22,9 @@ def effective_rank(
     # such that their cumulative sum is greater than some epsilon.
     assert (S < 0).sum() == 0, "Singular values cannot be non-negative."
     s_sum = torch.sum(S)
-    # Catch case where all singular values are zero due to many game ends/restarts in the buffer
+
+    # Catch case where the regularizer has collapsed the network features
+    # This makes the training not crash entirely when rank collapse occurs
     if np.isclose(s_sum.item(), 0.0):
         # Break tie through random selection of two singular values
         indices = torch.randperm(len(S))[:2]
