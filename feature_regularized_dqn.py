@@ -13,7 +13,6 @@ import gymnasium as gym
 import numpy as np
 import pyrallis
 import torch
-import torch._dynamo as dynamo
 import torch.nn.functional as F
 import torch.optim as optim
 
@@ -157,11 +156,6 @@ def main(cfg: Config) -> None:
         if global_step > cfg.learning_starts:
             if global_step % cfg.train_frequency == 0:
                 data = rb.sample(cfg.batch_size)
-
-                # Check for graph breaks in torch.compile
-                # breaks = dynamo.explain(
-                #     update, agent, target_network, optimizer, data, cfg.gamma, cfg.regularize, cfg.regularization_coefficient, cfg.srank_threshold
-                # )[-1]
 
                 loss, dqn_loss, regularizer, old_val, grad_norm = update(
                     q_network=agent, target_network=target_network, optimizer=optimizer, data=data, cfg=cfg
